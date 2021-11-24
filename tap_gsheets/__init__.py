@@ -19,6 +19,8 @@ def sync(config):
 
     # read config
     sheets = []
+    date_processing = True
+
     if 'sheet_name' in config:
         # one-sheet single page config
         sheet = {
@@ -43,23 +45,24 @@ def sync(config):
         else:
             worksheets = []
 
-        if "date_format" in sheet:
-            gsheet_loader.date_format = sheet["date_format"]
-        else:
-            gsheet_loader.date_format = ""
+        if "specific_date_format" in sheet:
+            gsheet_loader.specific_date_format = sheet["specific_date_format"]
+
+        if 'date_processing' in sheet and not sheet['date_processing']:
+            date_processing = False
 
         # noinspection PyBroadException
         try:
             if len(worksheets) > 0:
                 for worksheet in worksheets:
-                    process_worksheet(gsheets_loader, sheet_name, worksheet, start_from_row, config)
+                    process_worksheet(gsheets_loader, sheet_name, worksheet, start_from_row, config, date_processing)
             else:
-                process_worksheet(gsheets_loader, sheet_name, None, start_from_row, config)
+                process_worksheet(gsheets_loader, sheet_name, None, start_from_row, config, None)
         except Exception as e:
             LOGGER.error(f"Can't process a worksheet {sheet_name} because of:\n{e}", )
 
 
-def process_worksheet(gsheets_loader, sheet_name, worksheet, start_from_row, config):
+def process_worksheet(gsheets_loader, sheet_name, worksheet, start_from_row, config, date_processing):
     if worksheet is None:
         name_with_worksheet = sheet_name
     else:
@@ -72,8 +75,8 @@ def process_worksheet(gsheets_loader, sheet_name, worksheet, start_from_row, con
 
     records = gsheets_loader.get_records_as_json(sheet_name, worksheet, start_from_row)
 
-    if gsheet_loader.date_format:
-        non_standard_date_execution(records)
+    if date_processing:
+        run_date_processing(records)
 
     schema = gsheets_loader.get_schema(sheet_name, worksheet, start_from_row)
 
@@ -110,14 +113,18 @@ def process_worksheet(gsheets_loader, sheet_name, worksheet, start_from_row, con
         singer.write_record(stream_name, record_transformed)
 
 
-def non_standard_date_execution(records):
+def run_date_processing(records):
     for record in records:
+        counter = 0
         for field in record:
             try:
                 d = parser.parse(record[field])
-                record[field] = (d.replace(tzinfo=None) + d.utcoffset()).strftime(gsheet_loader.date_format)
+                record[field] = (d.replace(tzinfo=None) + d.utcoffset()).strftime(gsheet_loader.specific_date_format)
             except (TypeError, ValueError) as exception:
+                counter += 1
                 pass
+        if len(record) == counter:
+            break
 
 def main():
 

@@ -7,7 +7,7 @@ import logging
 import datetime
 
 logging.getLogger('oauth2client').setLevel(logging.ERROR)
-date_format = None
+specific_date_format = "%Y-%m-%d %H:%M:%S"
 
 class GSheetsLoader:
     """Wrapper for authenticating and retrieving data from Google Sheets"""
@@ -87,7 +87,7 @@ class CustomDateTime(TypedSchemaStrategy):
     def match_object(self, obj):
         super().match_object(obj)
         try:
-            date_time_obj = datetime.datetime.strptime(obj, "{}".format(date_format))
+            date_time_obj = datetime.datetime.strptime(obj, "{}".format(specific_date_format))
             if isinstance(date_time_obj, datetime.datetime):
                 return True
             else:
