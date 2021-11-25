@@ -117,12 +117,13 @@ def run_date_processing(records):
     for record in records:
         counter = 0
         for field in record:
-            try:
-                d = parser.parse(record[field])
-                record[field] = (d.replace(tzinfo=None) + d.utcoffset()).strftime(gsheet_loader.specific_date_format)
-            except (TypeError, ValueError) as exception:
-                counter += 1
-                pass
+            if record[field]:
+                try:
+                    d = parser.parse(record[field])
+                    record[field] = (d.replace(tzinfo=None) + d.utcoffset()).strftime(gsheet_loader.specific_date_format) if d.tzinfo else d.strftime(gsheet_loader.specific_date_format)
+                except (TypeError, ValueError) as exception:
+                    counter += 1
+                    pass
         if len(record) == counter:
             break
 
