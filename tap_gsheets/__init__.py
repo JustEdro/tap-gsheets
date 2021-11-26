@@ -6,6 +6,7 @@ import json
 from pyhocon import ConfigFactory
 from inflection import parameterize, tableize, underscore
 import argparse
+from dateutil import parser
 
 LOGGER = singer.get_logger()
 
@@ -18,6 +19,8 @@ def sync(config):
 
     # read config
     sheets = []
+    date_processing = True
+
     if 'sheet_name' in config:
         # one-sheet single page config
         sheet = {
@@ -42,18 +45,24 @@ def sync(config):
         else:
             worksheets = []
 
+        if "specific_date_format" in sheet:
+            gsheet_loader.specific_date_format = sheet["specific_date_format"]
+
+        if 'date_processing' in sheet and not sheet['date_processing']:
+            date_processing = False
+
         # noinspection PyBroadException
         try:
             if len(worksheets) > 0:
                 for worksheet in worksheets:
-                    process_worksheet(gsheets_loader, sheet_name, worksheet, start_from_row, config)
+                    process_worksheet(gsheets_loader, sheet_name, worksheet, start_from_row, config, date_processing)
             else:
-                process_worksheet(gsheets_loader, sheet_name, None, start_from_row, config)
+                process_worksheet(gsheets_loader, sheet_name, None, start_from_row, config, None)
         except Exception as e:
             LOGGER.error(f"Can't process a worksheet {sheet_name} because of:\n{e}", )
 
 
-def process_worksheet(gsheets_loader, sheet_name, worksheet, start_from_row, config):
+def process_worksheet(gsheets_loader, sheet_name, worksheet, start_from_row, config, date_processing):
     if worksheet is None:
         name_with_worksheet = sheet_name
     else:
@@ -64,9 +73,13 @@ def process_worksheet(gsheets_loader, sheet_name, worksheet, start_from_row, con
     else:
         stream_name = tableize(parameterize(name_with_worksheet))
 
+    records = gsheets_loader.get_records_as_json(sheet_name, worksheet, start_from_row)
+
+    if date_processing:
+        run_date_processing(records)
+
     schema = gsheets_loader.get_schema(sheet_name, worksheet, start_from_row)
 
-    records = gsheets_loader.get_records_as_json(sheet_name, worksheet, start_from_row)
 
     # additional data transformations
     column_mapping = None
@@ -99,6 +112,20 @@ def process_worksheet(gsheets_loader, sheet_name, worksheet, start_from_row, con
 
         singer.write_record(stream_name, record_transformed)
 
+
+def run_date_processing(records):
+    for record in records:
+        counter = 0
+        for field in record:
+            if record[field]:
+                try:
+                    d = parser.parse(record[field])
+                    record[field] = (d.replace(tzinfo=None) + d.utcoffset()).strftime(gsheet_loader.specific_date_format) if d.tzinfo else d.strftime(gsheet_loader.specific_date_format)
+                except (TypeError, ValueError) as exception:
+                    counter += 1
+                    pass
+        if len(record) == counter:
+            break
 
 def main():
 
